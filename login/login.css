@@ -1,0 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+    --bg: #0d0f14; --surface: #161922; --border: #2a2f3d;
+    --accent: #4f7cff; --accent-h: #3d6aee;
+    --text: #e8eaf0; --muted: #7a82a0;
+    --error-bg: #2a1520; --error-fg: #ff6b6b;
+    --radius: 12px; --font: 'DM Sans', sans-serif;
+}
+body.ikss-login-body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.ikss-login-bg { width: 100%; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem; background: radial-gradient(ellipse 60% 40% at 20% 60%, rgba(79,124,255,0.08) 0%, transparent 70%), radial-gradient(ellipse 40% 50% at 80% 20%, rgba(79,124,255,0.05) 0%, transparent 60%); }
+.ikss-login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 2.5rem 2.25rem; width: 100%; max-width: 400px; box-shadow: 0 24px 64px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.04) inset; animation: ikss-rise 0.4s ease both; }
+@keyframes ikss-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.ikss-login-header { text-align: center; margin-bottom: 2rem; }
+.ikss-logo { width: 60px; height: 60px; border-radius: 14px; margin-bottom: 1rem; object-fit: contain; }
+.ikss-logo-placeholder { font-size: 2.5rem; margin-bottom: 0.75rem; }
+.ikss-site-name { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; color: var(--text); margin-bottom: 0.25rem; }
+.ikss-tagline { font-size: 0.85rem; color: var(--muted); font-weight: 300; }
+.ikss-error { background: var(--error-bg); border: 1px solid rgba(255,107,107,0.25); color: var(--error-fg); border-radius: var(--radius); padding: 0.75rem 1rem; font-size: 0.875rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem; }
+.ikss-form { display: flex; flex-direction: column; gap: 1rem; }
+.ikss-field { display: flex; flex-direction: column; gap: 0.375rem; }
+.ikss-label { font-size: 0.8125rem; font-weight: 500; color: var(--muted); letter-spacing: 0.02em; text-transform: uppercase; }
+.ikss-input { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 0.9375rem; padding: 0.75rem 1rem; width: 100%; transition: border-color 0.15s, box-shadow 0.15s; outline: none; }
+.ikss-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,124,255,0.15); }
+.ikss-password-wrap { position: relative; }
+.ikss-password-wrap .ikss-input { padding-right: 3rem; }
+.ikss-toggle-pw { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 1rem; line-height: 1; padding: 0.25rem; opacity: 0.5; transition: opacity 0.15s; }
+.ikss-toggle-pw:hover { opacity: 1; }
+.ikss-remember { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: var(--muted); cursor: pointer; }
+.ikss-remember input { accent-color: var(--accent); }
+.ikss-btn { background: var(--accent); border: none; border-radius: var(--radius); color: #fff; cursor: pointer; font-family: var(--font); font-size: 0.9375rem; font-weight: 600; letter-spacing: 0.01em; padding: 0.875rem; margin-top: 0.5rem; transition: background 0.15s, transform 0.1s, box-shadow 0.15s; width: 100%; }
+.ikss-btn:hover { background: var(--accent-h); box-shadow: 0 4px 16px rgba(79,124,255,0.3); }
+.ikss-btn:active { transform: scale(0.985); }
+.ikss-footer-links { text-align: center; margin-top: 1.25rem; }
+.ikss-footer-links a { color: var(--muted); font-size: 0.8125rem; text-decoration: none; transition: color 0.15s; }
+.ikss-footer-links a:hover { color: var(--accent); }
+@media (max-width: 420px) { .ikss-login-card { padding: 2rem 1.5rem; border-radius: 16px; } }
