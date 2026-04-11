@@ -2,14 +2,14 @@
 /**
  * Plugin Name:  IK Site Security
  * Description:  Modulær sikkerhetsplugin – XML-RPC, versjonsskjuling, brute force, custom login og redirects.
- * Version:      1.7.0
+ * Version:      1.9.0
  * Author:       Ingvild Kolnes
  * Text Domain:  ik-site-security
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'IKSS_VERSION', '1.7.0' );
+define( 'IKSS_VERSION', '1.9.0' );
 define( 'IKSS_PATH',    plugin_dir_path( __FILE__ ) );
 define( 'IKSS_URL',     plugin_dir_url( __FILE__ ) );
 define( 'IKSS_DB_VERSION', '1' );
