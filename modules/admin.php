@@ -41,13 +41,36 @@ function ikss_admin_settings() {
         'brute_force_enabled', 'brute_max_attempts', 'brute_lockout_mins',
     ];
     foreach ( $fields as $field ) {
-        $sanitize = in_array( $field, [ 'login_slug' ], true )
-            ? 'sanitize_title'
-            : ( in_array( $field, [ 'brute_max_attempts', 'brute_lockout_mins' ], true )
-                ? 'absint'
-                : 'absint' );
+        switch ( $field ) {
+            case 'login_slug':
+                $sanitize = 'ikss_sanitize_login_slug';
+                break;
+            case 'brute_max_attempts':
+                $sanitize = 'ikss_sanitize_max_attempts';
+                break;
+            case 'brute_lockout_mins':
+                $sanitize = 'ikss_sanitize_lockout_mins';
+                break;
+            default:
+                $sanitize = 'ikss_sanitize_checkbox';
+        }
         register_setting( 'ikss_settings', 'ikss_' . $field, [ 'sanitize_callback' => $sanitize ] );
     }
+}
+
+/** Av/på-felt: alltid 0 eller 1. */
+function ikss_sanitize_checkbox( $value ) {
+    return empty( $value ) ? 0 : 1;
+}
+
+/** Antall forsøk før lockout: 2-20, samme grenser som skjemafeltet. */
+function ikss_sanitize_max_attempts( $value ) {
+    return min( 20, max( 2, absint( $value ) ) );
+}
+
+/** Lockout-tid i minutter: 5-1440, samme grenser som skjemafeltet. */
+function ikss_sanitize_lockout_mins( $value ) {
+    return min( 1440, max( 5, absint( $value ) ) );
 }
 
 function ikss_admin_page() {
@@ -90,7 +113,7 @@ function ikss_admin_page() {
                     <?php ikss_checkbox( 'hide_login_errors', 'Skjul innloggingsfeil',
                         'Erstatter spesifikke WP-feilmeldinger med en nøytral tekst.' ); ?>
                     <?php ikss_checkbox( 'block_author_scan', 'Blokker author-scanning',
-                        'Redirecter ?author=1 til forsiden. Forhindrer enumerering av brukernavn.' ); ?>
+                        'Redirecter ?author=1 til forsiden og skjuler brukerlisten i REST API (/wp-json/wp/v2/users) for utloggede. Forhindrer enumerering av brukernavn.' ); ?>
                 </table>
             </div>
 
@@ -113,7 +136,7 @@ function ikss_admin_page() {
                         <td>
                             <input type="number" id="ikss_brute_lockout_mins" name="ikss_brute_lockout_mins"
                                 value="<?php echo esc_attr( $mins ); ?>" min="5" max="1440" class="small-text" />
-                            <p class="description">Hvor lenge en IP er utestengt. Standard: 30 minutter.</p>
+                            <p class="description">Hvor lenge en IP er utestengt. Feilforsøk telles også bare innenfor dette tidsrommet. Standard: 30 minutter.</p>
                         </td>
                     </tr>
                 </table>
@@ -144,8 +167,8 @@ function ikss_admin_page() {
                 <div class="ikss-info-box" style="margin-top:1rem;">
                     <p>Når custom login er aktiv skjer følgende automatisk:</p>
                     <ul>
-                        <li>✅ <code>GET /wp-login.php</code> → custom login (301)</li>
-                        <li>✅ <code>/wp-admin</code> når ikke innlogget → custom login (302)</li>
+                        <li>✅ <code>/wp-login.php</code> gir 404 (siden finnes ikke)</li>
+                        <li>✅ <code>/wp-admin</code> når ikke innlogget gir 404</li>
                         <li>✅ Passordtilbakestilling, utlogging og AJAX slipper gjennom</li>
                         <li>✅ WP-CLI og cron blokkeres ikke</li>
                     </ul>

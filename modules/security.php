@@ -56,10 +56,19 @@ function ikss_security_init() {
             wp_safe_redirect( home_url( '/' ), 301 );
             exit;
         }
+        // 2.4.0: skjul brukerlisten i REST API for utloggede.
+        // Blokkeditoren er innlogget og påvirkes ikke.
+        add_filter( 'rest_endpoints', 'ikss_hide_rest_users' );
     }
 
     // ── Sikkerhetstoppfiler ──────────────────────────────────
     add_action( 'send_headers', 'ikss_security_headers' );
+}
+
+function ikss_hide_rest_users( $endpoints ) {
+    if ( is_user_logged_in() ) return $endpoints;
+    unset( $endpoints['/wp/v2/users'], $endpoints['/wp/v2/users/(?P<id>[\\d]+)'] );
+    return $endpoints;
 }
 
 function ikss_remove_version_query( $src ) {
@@ -104,6 +113,20 @@ function ikss_remove_htaccess() {
     file_put_contents( $htaccess, $updated );
 }
 
+/**
+ * Nekt-regel som virker på både Apache 2.4 (Require) og 2.2 (Order/Deny).
+ * Endret i 2.4.0: før ble bare 2.2-syntaks skrevet.
+ */
+function ikss_htaccess_deny() {
+    return "  <IfModule mod_authz_core.c>\n"
+         . "    Require all denied\n"
+         . "  </IfModule>\n"
+         . "  <IfModule !mod_authz_core.c>\n"
+         . "    Order Deny,Allow\n"
+         . "    Deny from all\n"
+         . "  </IfModule>\n";
+}
+
 function ikss_get_htaccess_rules() {
     $disable_xmlrpc     = get_option( 'ikss_disable_xmlrpc', 1 );
     $protect_sensitive  = get_option( 'ikss_protect_sensitive', 1 );
@@ -112,30 +135,18 @@ function ikss_get_htaccess_rules() {
 
     if ( $disable_xmlrpc ) {
         $rules .= "# Blokker XML-RPC\n";
-        $rules .= "<Files xmlrpc.php>\n";
-        $rules .= "  Order Deny,Allow\n";
-        $rules .= "  Deny from all\n";
-        $rules .= "</Files>\n\n";
+        $rules .= "<Files xmlrpc.php>\n" . ikss_htaccess_deny() . "</Files>\n\n";
     }
 
     if ( $protect_sensitive ) {
         $rules .= "# Beskytt wp-config.php\n";
-        $rules .= "<Files wp-config.php>\n";
-        $rules .= "  Order Deny,Allow\n";
-        $rules .= "  Deny from all\n";
-        $rules .= "</Files>\n\n";
+        $rules .= "<Files wp-config.php>\n" . ikss_htaccess_deny() . "</Files>\n\n";
 
         $rules .= "# Beskytt .htaccess\n";
-        $rules .= "<Files .htaccess>\n";
-        $rules .= "  Order Deny,Allow\n";
-        $rules .= "  Deny from all\n";
-        $rules .= "</Files>\n\n";
+        $rules .= "<Files .htaccess>\n" . ikss_htaccess_deny() . "</Files>\n\n";
 
         $rules .= "# Blokker tilgang til readme og lisensfiler\n";
-        $rules .= "<FilesMatch \"^(readme|license|README|LICENSE)\.(html|txt|md)$\">\n";
-        $rules .= "  Order Deny,Allow\n";
-        $rules .= "  Deny from all\n";
-        $rules .= "</FilesMatch>\n";
+        $rules .= "<FilesMatch \"^(readme|license|README|LICENSE)\.(html|txt|md)$\">\n" . ikss_htaccess_deny() . "</FilesMatch>\n";
     }
 
     $rules .= "# END IK Site Security\n";

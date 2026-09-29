@@ -2,7 +2,7 @@
 /**
  * Plugin Name:  IK Site Security
  * Description:  Modulær sikkerhetsplugin – XML-RPC, versjonsskjuling, brute force, custom login og redirects.
- * Version:      2.3.3
+ * Version:      2.4.0
  * Author:       Ingvild Kolnes
  * Update URI:   https://github.com/ingvildkolnes/ik-site-security
  * Text Domain:  ik-site-security
@@ -10,7 +10,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'IKSS_VERSION',    '2.3.3' );
+define( 'IKSS_VERSION',    '2.4.0' );
 define( 'IKSS_PATH',       plugin_dir_path( __FILE__ ) );
 define( 'IKSS_URL',        plugin_dir_url( __FILE__ ) );
 define( 'IKSS_DB_VERSION', '1' );
@@ -22,7 +22,6 @@ require_once IKSS_PATH . 'modules/updater.php';
 require_once IKSS_PATH . 'modules/login-log.php';
 require_once IKSS_PATH . 'modules/security.php';
 require_once IKSS_PATH . 'modules/brute-force.php';
-require_once IKSS_PATH . 'modules/login.php';
 require_once IKSS_PATH . 'modules/redirects.php';
 require_once IKSS_PATH . 'modules/admin.php';
 
@@ -58,6 +57,26 @@ function ikss_activate() {
     ikss_create_login_log_table();
     ikss_write_htaccess();
     flush_rewrite_rules();
+    update_option( 'ikss_version', IKSS_VERSION );
+}
+
+/* ---------------------------------------------------------------
+ * Oppgradering (2.4.0)
+ * Automatiske oppdateringer kjører ikke aktiveringskoden. Derfor
+ * sjekkes lagret versjon én gang, og det som ellers bare skjer ved
+ * aktivering, gjøres på nytt ved første besøk etter oppdatering.
+ * ------------------------------------------------------------- */
+add_action( 'init', 'ikss_maybe_upgrade', 99 );
+
+function ikss_maybe_upgrade() {
+    if ( get_option( 'ikss_version' ) === IKSS_VERSION ) return;
+
+    ikss_create_lockout_table();
+    ikss_create_login_log_table();
+    ikss_refresh_htaccess();     // skriver .htaccess-reglene med ny syntaks
+    flush_rewrite_rules();       // fjerner rewrite-regelen fra gamle login.php
+
+    update_option( 'ikss_version', IKSS_VERSION );
 }
 
 function ikss_deactivate() {

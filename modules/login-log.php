@@ -15,7 +15,9 @@ function ikss_log_login( $user_login, $user ) {
     $table = $wpdb->prefix . 'ikss_login_log';
     $ip    = ikss_get_ip();
     $now   = current_time( 'mysql' );
-    $agent = sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ?? '' );
+    $agent = sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ?? '' ) );
+    // Kolonnen er varchar(255). For lang verdi kan stoppe hele loggraden.
+    $agent = function_exists( 'mb_substr' ) ? mb_substr( $agent, 0, 255 ) : substr( $agent, 0, 255 );
 
     // Sjekk om denne IP-en har logget inn før for denne brukeren
     $known = $wpdb->get_var( $wpdb->prepare(

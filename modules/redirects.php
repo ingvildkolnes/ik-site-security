@@ -13,8 +13,21 @@ add_filter( 'network_site_url', 'ikss_filter_network_site_url', 10, 3 );
 add_filter( 'wp_redirect',      'ikss_filter_wp_redirect', 10, 2 );
 remove_action( 'template_redirect', 'wp_redirect_admin_locations', 1000 );
 
+/**
+ * Rens login-slug. Tom slug eller ord WordPress selv bruker gir 'portal'.
+ * Brukes både ved lagring (admin.php) og ved lesing.
+ */
+function ikss_sanitize_login_slug( $value ) {
+    $slug     = sanitize_title( (string) $value );
+    $reserved = [ 'wp-admin', 'wp-login', 'wp-login-php', 'admin', 'login', 'dashboard', 'wp-json', 'feed' ];
+    if ( '' === $slug || in_array( $slug, $reserved, true ) ) {
+        return 'portal';
+    }
+    return $slug;
+}
+
 function ikss_login_slug() {
-    return sanitize_title( get_option( 'ikss_login_slug', 'portal' ) );
+    return ikss_sanitize_login_slug( get_option( 'ikss_login_slug', 'portal' ) );
 }
 
 function ikss_login_url( $scheme = null ) {
@@ -70,8 +83,9 @@ function ikss_wp_loaded() {
         && ! defined( 'DOING_AJAX' )
         && ! defined( 'DOING_CRON' )
         && $pagenow !== 'admin-post.php'
-        && ( ! isset( $request['path'] ) || $request['path'] !== '/wp-admin/options.php' )
     ) {
+        // 2.4.0: unntaket for /wp-admin/options.php er fjernet. Utloggede har
+        // ingen grunn til å nå den, og unntaket kunne lekke login-adressen.
         status_header( 404 );
         nocache_headers();
         ikss_load_404();
