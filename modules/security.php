@@ -24,8 +24,11 @@ function ikss_security_init() {
     if ( get_option( 'ikss_remove_wp_version', 1 ) ) {
         remove_action( 'wp_head', 'wp_generator' );
         add_filter( 'the_generator', '__return_empty_string' );
-        add_filter( 'style_loader_src',  'ikss_remove_version_query', 999 );
-        add_filter( 'script_loader_src', 'ikss_remove_version_query', 999 );
+        // Bare frontend – ikke admin/block editor
+        if ( ! is_admin() ) {
+            add_filter( 'style_loader_src',  'ikss_remove_version_query', 999 );
+            add_filter( 'script_loader_src', 'ikss_remove_version_query', 999 );
+        }
     }
 
     // ── RSD og WLW ───────────────────────────────────────────

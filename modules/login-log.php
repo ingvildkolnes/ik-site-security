@@ -13,7 +13,7 @@ add_action( 'wp_login', 'ikss_log_login', 10, 2 );
 function ikss_log_login( $user_login, $user ) {
     global $wpdb;
     $table = $wpdb->prefix . 'ikss_login_log';
-    $ip    = ikss_get_visitor_ip();
+    $ip    = ikss_get_ip();
     $now   = current_time( 'mysql' );
     $agent = sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ?? '' );
 
@@ -32,8 +32,8 @@ function ikss_log_login( $user_login, $user ) {
         'logged_at'  => $now,
     ] );
 
-    // Send e-postvarsel hvis ny IP
-    if ( ! $known ) {
+    // Send e-postvarsel hvis ny IP og varsling er skrudd på
+    if ( ! $known && get_option( 'ikss_login_alert_enabled', 0 ) ) {
         ikss_send_login_alert( $user, $ip, $now );
     }
 
@@ -45,16 +45,6 @@ function ikss_log_login( $user_login, $user ) {
             ) AS keep
         )"
     );
-}
-
-function ikss_get_visitor_ip() {
-    foreach ( [ 'HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR' ] as $key ) {
-        if ( ! empty( $_SERVER[ $key ] ) ) {
-            $ip = trim( explode( ',', $_SERVER[ $key ] )[0] );
-            if ( filter_var( $ip, FILTER_VALIDATE_IP ) ) return $ip;
-        }
-    }
-    return '0.0.0.0';
 }
 
 function ikss_send_login_alert( $user, $ip, $time ) {
@@ -75,7 +65,6 @@ function ikss_send_login_alert( $user, $ip, $time ) {
     wp_mail( $to, $subject, $message );
 }
 
-/* ── Opprett logg-tabell ─────────────────────────────────── */
 function ikss_create_login_log_table() {
     global $wpdb;
     $table   = $wpdb->prefix . 'ikss_login_log';

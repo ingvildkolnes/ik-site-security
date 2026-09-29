@@ -33,15 +33,13 @@ function ikss_trailingslashit( $string ) {
     return ikss_use_trailing_slashes() ? trailingslashit( $string ) : untrailingslashit( $string );
 }
 
-/* ── plugins_loaded: intercept wp-login.php og sett pagenow ── */
 function ikss_plugins_loaded() {
-    if ( ! get_option( 'ikss_custom_login_enabled', 1 ) ) return;
+    if ( ! get_option( 'ikss_custom_login_enabled', 0 ) ) return;
 
     global $pagenow;
 
     $request = parse_url( rawurldecode( $_SERVER['REQUEST_URI'] ) );
 
-    // wp-login.php treffer → sett til ugyldig URI så WP ikke finner noe
     if (
         strpos( rawurldecode( $_SERVER['REQUEST_URI'] ), 'wp-login.php' ) !== false
         && ! is_admin()
@@ -49,7 +47,6 @@ function ikss_plugins_loaded() {
         $_SERVER['REQUEST_URI'] = ikss_trailingslashit( '/' . str_repeat( '-/', 10 ) );
         $pagenow = 'index.php';
 
-    // Login-slug treffer → fortell WP at dette er wp-login.php
     } elseif (
         ( isset( $request['path'] ) && untrailingslashit( $request['path'] ) === home_url( ikss_login_slug(), 'relative' ) )
         || ( ! get_option( 'permalink_structure' ) && isset( $_GET[ ikss_login_slug() ] ) && empty( $_GET[ ikss_login_slug() ] ) )
@@ -59,15 +56,13 @@ function ikss_plugins_loaded() {
     }
 }
 
-/* ── wp_loaded: vis login eller 404 ──────────────────────── */
 function ikss_wp_loaded() {
-    if ( ! get_option( 'ikss_custom_login_enabled', 1 ) ) return;
+    if ( ! get_option( 'ikss_custom_login_enabled', 0 ) ) return;
 
     global $pagenow;
 
     $request = parse_url( rawurldecode( $_SERVER['REQUEST_URI'] ) );
 
-    // wp-admin for ikke-innlogget → 404
     if (
         is_admin()
         && ! is_user_logged_in()
@@ -83,17 +78,13 @@ function ikss_wp_loaded() {
         exit;
     }
 
-    // wp-login.php ble interceptet → last inn 404-mal (REQUEST_URI er allerede ugyldig)
     if ( $pagenow === 'index.php' && strpos( $_SERVER['REQUEST_URI'], str_repeat( '-/', 10 ) ) !== false ) {
-        // Sjekk om det er en tillatt handling (passordtilbakestilling etc.)
-        // – disse slipper gjennom fordi $pagenow ikke settes til 'index.php' for dem
         status_header( 404 );
         nocache_headers();
         ikss_load_404();
         exit;
     }
 
-    // Login-slug → vis den vanlige WP login-siden
     if ( $pagenow === 'wp-login.php' ) {
         if ( is_user_logged_in() && ! isset( $_REQUEST['action'] ) ) {
             wp_safe_redirect( admin_url() );
@@ -104,7 +95,6 @@ function ikss_wp_loaded() {
     }
 }
 
-/* ── Last inn 404-mal ────────────────────────────────────── */
 function ikss_load_404() {
     global $wp_query;
     if ( isset( $wp_query ) ) $wp_query->set_404();
@@ -117,8 +107,11 @@ function ikss_load_404() {
     }
 }
 
-/* ── Filtrer alle interne login-URLer til slug ───────────── */
 function ikss_filter_wp_login_php( $url, $scheme = null ) {
+    // Ikke filtrer i REST API eller AJAX – fikser konflikt med block editor i WP 7
+    if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) return $url;
+    if ( defined( 'DOING_AJAX' ) && DOING_AJAX ) return $url;
+
     if ( strpos( $url, 'wp-login.php?action=postpass' ) !== false ) return $url;
     if ( strpos( $url, 'wp-login.php' ) !== false ) {
         if ( is_ssl() ) $scheme = 'https';
@@ -135,16 +128,16 @@ function ikss_filter_wp_login_php( $url, $scheme = null ) {
 }
 
 function ikss_filter_site_url( $url, $path, $scheme, $blog_id ) {
-    if ( ! get_option( 'ikss_custom_login_enabled', 1 ) ) return $url;
+    if ( ! get_option( 'ikss_custom_login_enabled', 0 ) ) return $url;
     return ikss_filter_wp_login_php( $url, $scheme );
 }
 
 function ikss_filter_network_site_url( $url, $path, $scheme ) {
-    if ( ! get_option( 'ikss_custom_login_enabled', 1 ) ) return $url;
+    if ( ! get_option( 'ikss_custom_login_enabled', 0 ) ) return $url;
     return ikss_filter_wp_login_php( $url, $scheme );
 }
 
 function ikss_filter_wp_redirect( $location, $status ) {
-    if ( ! get_option( 'ikss_custom_login_enabled', 1 ) ) return $location;
+    if ( ! get_option( 'ikss_custom_login_enabled', 0 ) ) return $location;
     return ikss_filter_wp_login_php( $location );
 }

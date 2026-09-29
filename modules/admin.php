@@ -1,12 +1,20 @@
 <?php
 /**
  * Modul: Admin-innstillinger
- * Seksjoner: Sikkerhet / Login / Redirects (info)
+ * Seksjoner: Sikkerhet / Brute Force / Login / Redirects (info) / Lockout-liste
  */
 
 defined( 'ABSPATH' ) || exit;
 
 add_action( 'admin_menu',            'ikss_admin_menu' );
+// Flush permalinks automatisk når login-slug eller custom login endres
+add_action( 'update_option_ikss_login_slug',           'ikss_flush_on_change' );
+add_action( 'update_option_ikss_custom_login_enabled', 'ikss_flush_on_change' );
+
+function ikss_flush_on_change() {
+    flush_rewrite_rules();
+}
+
 add_action( 'admin_init',            'ikss_admin_settings' );
 add_action( 'admin_enqueue_scripts', 'ikss_admin_styles' );
 
@@ -29,22 +37,36 @@ function ikss_admin_settings() {
     $fields = [
         'disable_xmlrpc', 'remove_wp_version', 'remove_rsd_link', 'remove_wlw_link',
         'disable_file_edit', 'hide_login_errors', 'block_author_scan', 'protect_sensitive',
-        'custom_login_enabled', 'login_slug',
+        'custom_login_enabled', 'login_slug', 'login_alert_enabled',
+        'brute_force_enabled', 'brute_max_attempts', 'brute_lockout_mins',
     ];
     foreach ( $fields as $field ) {
-        register_setting( 'ikss_settings', 'ikss_' . $field, [
-            'sanitize_callback' => $field === 'login_slug' ? 'sanitize_title' : 'absint',
-        ] );
+        $sanitize = in_array( $field, [ 'login_slug' ], true )
+            ? 'sanitize_title'
+            : ( in_array( $field, [ 'brute_max_attempts', 'brute_lockout_mins' ], true )
+                ? 'absint'
+                : 'absint' );
+        register_setting( 'ikss_settings', 'ikss_' . $field, [ 'sanitize_callback' => $sanitize ] );
     }
 }
 
 function ikss_admin_page() {
     if ( ! current_user_can( 'manage_options' ) ) return;
-    $slug = get_option( 'ikss_login_slug', 'portal' );
+
+    $slug     = get_option( 'ikss_login_slug', 'portal' );
+    $max      = get_option( 'ikss_brute_max_attempts', 5 );
+    $mins     = get_option( 'ikss_brute_lockout_mins', 30 );
+    $lockouts = ikss_get_lockouts();
+    $now      = current_time( 'mysql' );
     ?>
     <div class="wrap ikss-wrap">
         <h1 class="ikss-title">🔒 IK Site Security</h1>
         <?php settings_errors(); ?>
+        <?php if ( isset( $_GET['ikss_unlocked'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p>
+                <?php echo $_GET['ikss_unlocked'] === 'all' ? 'Alle lockouts er fjernet.' : 'IP-adressen er låst opp.'; ?>
+            </p></div>
+        <?php endif; ?>
 
         <form method="post" action="options.php">
             <?php settings_fields( 'ikss_settings' ); ?>
@@ -54,9 +76,9 @@ function ikss_admin_page() {
                 <h2 class="ikss-section-title"><span class="ikss-icon">🛡️</span> Del 1 — Sikkerhet</h2>
                 <table class="form-table ikss-table">
                     <?php ikss_checkbox( 'disable_xmlrpc', 'Deaktiver XML-RPC',
-                        'Blokkerer xmlrpc.php på servernivå via .htaccess.' ); ?>
+                        'Blokkerer xmlrpc.php på servernivå via .htaccess og deaktiverer WordPress-filteret. BlogVault bruker sin egen plugin og trenger ikke XML-RPC.' ); ?>
                     <?php ikss_checkbox( 'protect_sensitive', 'Beskytt sensitive filer',
-                        'Blokkerer direkte tilgang til wp-config.php, .htaccess og readme/lisensfiler.' ); ?>
+                        'Blokkerer direkte tilgang til wp-config.php, .htaccess og readme/lisensfiler via .htaccess.' ); ?>
                     <?php ikss_checkbox( 'remove_wp_version', 'Fjern WP-versjon',
                         'Fjerner versjonsnummeret fra head, RSS og alle script/style-URLer.' ); ?>
                     <?php ikss_checkbox( 'remove_rsd_link', 'Fjern RSD-lenke',
@@ -72,14 +94,39 @@ function ikss_admin_page() {
                 </table>
             </div>
 
-            <!-- ══ DEL 2: LOGIN ══════════════════════════════════ -->
+            <!-- ══ DEL 2: BRUTE FORCE ════════════════════════════ -->
             <div class="ikss-section">
-                <h2 class="ikss-section-title"><span class="ikss-icon">🔑</span> Del 2 — Custom Login</h2>
+                <h2 class="ikss-section-title"><span class="ikss-icon">🔐</span> Del 2 — Brute Force-beskyttelse</h2>
                 <table class="form-table ikss-table">
-                    <?php ikss_checkbox( 'custom_login_enabled', 'Aktiver custom login',
+                    <?php ikss_checkbox( 'brute_force_enabled', 'Aktiver brute force-beskyttelse',
+                        'Låser ute IP-adresser som overskrider maks antall innloggingsforsøk.' ); ?>
+                    <tr>
+                        <th scope="row"><label for="ikss_brute_max_attempts">Maks forsøk før lockout</label></th>
+                        <td>
+                            <input type="number" id="ikss_brute_max_attempts" name="ikss_brute_max_attempts"
+                                value="<?php echo esc_attr( $max ); ?>" min="2" max="20" class="small-text" />
+                            <p class="description">Antall mislykkede forsøk før IP-en låses ute. Standard: 5.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="ikss_brute_lockout_mins">Lockout-varighet (minutter)</label></th>
+                        <td>
+                            <input type="number" id="ikss_brute_lockout_mins" name="ikss_brute_lockout_mins"
+                                value="<?php echo esc_attr( $mins ); ?>" min="5" max="1440" class="small-text" />
+                            <p class="description">Hvor lenge en IP er utestengt. Standard: 30 minutter.</p>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- ══ DEL 3: LOGIN ══════════════════════════════════ -->
+            <div class="ikss-section">
+                <h2 class="ikss-section-title"><span class="ikss-icon">🔑</span> Del 3 — Custom Login</h2>
+                <table class="form-table ikss-table">
+                    <?php ikss_checkbox( 'custom_login_enabled', 'Aktiver custom login-side',
                         'Skjuler wp-login.php og wp-admin. Login skjer på din valgte URL.' ); ?>
                     <tr>
-                        <th scope="row"><label for="ikss_login_slug">Login URL</label></th>
+                        <th scope="row"><label for="ikss_login_slug">Login URL-slug</label></th>
                         <td>
                             <div class="ikss-slug-row">
                                 <span class="ikss-slug-base"><?php echo esc_url( home_url( '/' ) ); ?></span>
@@ -88,27 +135,22 @@ function ikss_admin_page() {
                                     class="regular-text ikss-slug-input" placeholder="portal" />
                             </div>
                             <p class="description">
-                                Login-siden: <strong><?php echo esc_url( home_url( '/' . $slug . '/' ) ); ?></strong>
+                                Innloggingssiden: <strong><?php echo esc_url( home_url( '/' . $slug . '/' ) ); ?></strong><br>
+                                Velg en slug som er vanskelig å gjette. Unngå åpenbare ord som <code>login</code>, <code>admin</code> eller <code>innlogging</code>.
                             </p>
                         </td>
                     </tr>
                 </table>
-            </div>
-
-            <!-- ══ DEL 3: REDIRECTS ══════════════════════════════ -->
-            <div class="ikss-section">
-                <h2 class="ikss-section-title"><span class="ikss-icon">↩️</span> Del 3 — Redirects</h2>
-                <div class="ikss-info-box">
+                <div class="ikss-info-box" style="margin-top:1rem;">
                     <p>Når custom login er aktiv skjer følgende automatisk:</p>
                     <ul>
-                        <li>✅ <code>/wp-login.php</code> gir 404</li>
-                        <li>✅ <code>/wp-admin</code> gir 404 når ikke innlogget</li>
-                        <li>✅ Passordtilbakestilling og utlogging fungerer normalt</li>
-                        <li>✅ AJAX og cron blokkeres ikke</li>
+                        <li>✅ <code>GET /wp-login.php</code> → custom login (301)</li>
+                        <li>✅ <code>/wp-admin</code> når ikke innlogget → custom login (302)</li>
+                        <li>✅ Passordtilbakestilling, utlogging og AJAX slipper gjennom</li>
+                        <li>✅ WP-CLI og cron blokkeres ikke</li>
                     </ul>
                     <p class="ikss-warning">
-                        ⚠️ Husk å flush permalinks etter endringer (Innstillinger → Permalinks → Lagre).
-                        Test alltid i inkognito mens du er innlogget i en annen fane.
+                        ⚠️ Etter aktivering: Åpne et inkognitovindu og test at innlogging fungerer. Da er du fortsatt innlogget her og kan skru det av igjen om du låser deg selv ute under testen.
                     </p>
                 </div>
             </div>
@@ -116,9 +158,66 @@ function ikss_admin_page() {
             <?php submit_button( 'Lagre innstillinger', 'primary ikss-save-btn' ); ?>
         </form>
 
+        <!-- ══ LOCKOUT-LISTE ═════════════════════════════════════ -->
+        <div class="ikss-section ikss-lockout-section">
+            <h2 class="ikss-section-title"><span class="ikss-icon">🚫</span> Aktive lockouts</h2>
+            <?php if ( empty( $lockouts ) ) : ?>
+                <p class="ikss-muted">Ingen registrerte innloggingsforsøk.</p>
+            <?php else : ?>
+                <form method="post">
+                    <?php wp_nonce_field( 'ikss_unlock', 'ikss_unlock_nonce' ); ?>
+                    <table class="widefat ikss-lockout-table">
+                        <thead>
+                            <tr>
+                                <th>IP-adresse</th>
+                                <th>Forsøk</th>
+                                <th>Siste forsøk</th>
+                                <th>Låst ut til</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ( $lockouts as $row ) :
+                            $is_locked = $row->locked_until && $row->locked_until > $now;
+                        ?>
+                            <tr class="<?php echo $is_locked ? 'ikss-row-locked' : ''; ?>">
+                                <td><code><?php echo esc_html( $row->ip ); ?></code></td>
+                                <td><?php echo (int) $row->attempts; ?></td>
+                                <td><?php echo esc_html( $row->last_attempt ); ?></td>
+                                <td>
+                                    <?php if ( $is_locked ) : ?>
+                                        <span class="ikss-badge-locked">🔒 <?php echo esc_html( $row->locked_until ); ?></span>
+                                    <?php else : ?>
+                                        <span class="ikss-muted">—</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <button type="submit" name="ikss_unlock_ip"
+                                        value="<?php echo esc_attr( $row->ip ); ?>"
+                                        class="button button-small">Fjern</button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <p>
+                        <button type="submit" name="ikss_clear_all_lockouts" value="1"
+                            class="button button-secondary"
+                            onclick="return confirm('Fjerne alle lockouts?')">
+                            Tøm hele listen
+                        </button>
+                    </p>
+                </form>
+            <?php endif; ?>
+        </div>
+
         <!-- ══ INNLOGGINGSLOGG ══════════════════════════════════ -->
         <div class="ikss-section ikss-lockout-section">
             <h2 class="ikss-section-title"><span class="ikss-icon">📋</span> Innloggingslogg</h2>
+                <table class="form-table ikss-table">
+                    <?php ikss_checkbox( 'login_alert_enabled', 'E-postvarsel ved innlogging fra ny IP',
+                        'Sender e-post til admin når noen logger inn fra en IP-adresse som ikke er sett før.' ); ?>
+                </table>
             <?php
             global $wpdb;
             $logs = $wpdb->get_results(
@@ -143,7 +242,7 @@ function ikss_admin_page() {
                             <td><strong><?php echo esc_html( $row->user_login ); ?></strong></td>
                             <td><code><?php echo esc_html( $row->ip ); ?></code></td>
                             <td><?php echo esc_html( $row->logged_at ); ?></td>
-                            <td><span class="ikss-muted"><?php echo esc_html( substr( $row->user_agent, 0, 60 ) ); ?><?php echo strlen( $row->user_agent ) > 60 ? '...' : ''; ?></span></td>
+                            <td><span class="ikss-muted"><?php echo esc_html( substr( $row->user_agent, 0, 60 ) ); ?><?php echo strlen( $row->user_agent ) > 60 ? "..." : ""; ?></span></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
