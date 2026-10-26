@@ -8,11 +8,15 @@ defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 
 global $wpdb;
 
+// Bakgrunnsjobben for SSL-selvsjekk.
+wp_clear_scheduled_hook( 'ikss_https_selfcheck_event' );
+
 // Tabeller med IP-adresser og User-Agent (personopplysninger).
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}ikss_lockouts" );
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}ikss_login_log" );
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}ikss_rest_log" );
 
-// Alle innstillinger som starter med ikss_.
+// Alle innstillinger som starter med ikss_ (også selvsjekk-status og lås).
 $wpdb->query( $wpdb->prepare(
     "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
     $wpdb->esc_like( 'ikss_' ) . '%'

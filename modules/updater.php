@@ -92,8 +92,12 @@ function ikss_updater_debug() {
     echo '<li><strong>Plugin file (basename):</strong> ' . esc_html( $this_plugin ) . '</li>';
     echo '<li><strong>Installert versjon:</strong> ' . esc_html( $installed_version ) . '</li>';
 
-    // 2.4.0: vis hvilken IP serveren ser. Brute force og innloggingslogg
-    // bruker bare REMOTE_ADDR. Er den lik din egen IP, er oppsettet riktig.
+    // 2.5.0: hvilken IP pluginen faktisk bruker, og hvorfor.
+    $ikss_src = ikss_ip_source();
+    echo '<li><strong>IP pluginen bruker:</strong> ' . esc_html( $ikss_src['ip'] ) . ' (kilde: ' . esc_html( $ikss_src['kilde'] ) . ')</li>';
+    echo '<li><strong>HTTPS-tvang aktiv:</strong> ' . ( ikss_https_is_active() ? 'ja' : 'nei' ) . ' (selvsjekk: ' . esc_html( get_option( 'ikss_https_check', 'ikke kjørt' ) ) . ')</li>';
+
+    // 2.4.0: vis hvilken IP serveren ser.
     foreach ( [ 'REMOTE_ADDR', 'HTTP_X_FORWARDED_FOR', 'HTTP_CF_CONNECTING_IP', 'HTTP_X_REAL_IP' ] as $ikss_key ) {
         $ikss_val = isset( $_SERVER[ $ikss_key ] ) ? sanitize_text_field( wp_unslash( $_SERVER[ $ikss_key ] ) ) : '(ikke satt)';
         echo '<li><strong>' . esc_html( $ikss_key ) . ':</strong> ' . esc_html( $ikss_val ) . '</li>';

@@ -39,6 +39,7 @@ function ikss_admin_settings() {
         'disable_file_edit', 'hide_login_errors', 'block_author_scan', 'protect_sensitive',
         'custom_login_enabled', 'login_slug', 'login_alert_enabled',
         'brute_force_enabled', 'brute_max_attempts', 'brute_lockout_mins',
+        'force_https', 'security_txt_enabled', 'security_txt_contact',
     ];
     foreach ( $fields as $field ) {
         switch ( $field ) {
@@ -50,6 +51,9 @@ function ikss_admin_settings() {
                 break;
             case 'brute_lockout_mins':
                 $sanitize = 'ikss_sanitize_lockout_mins';
+                break;
+            case 'security_txt_contact':
+                $sanitize = 'ikss_sanitize_contact_email';
                 break;
             default:
                 $sanitize = 'ikss_sanitize_checkbox';
@@ -68,6 +72,12 @@ function ikss_sanitize_max_attempts( $value ) {
     return min( 20, max( 2, absint( $value ) ) );
 }
 
+/** Kontakt-e-post for security.txt: gyldig e-post eller tom (da brukes admin-e-post). */
+function ikss_sanitize_contact_email( $value ) {
+    $value = sanitize_email( (string) $value );
+    return is_email( $value ) ? $value : '';
+}
+
 /** Lockout-tid i minutter: 5-1440, samme grenser som skjemafeltet. */
 function ikss_sanitize_lockout_mins( $value ) {
     return min( 1440, max( 5, absint( $value ) ) );
@@ -80,7 +90,12 @@ function ikss_admin_page() {
     $max      = get_option( 'ikss_brute_max_attempts', 5 );
     $mins     = get_option( 'ikss_brute_lockout_mins', 30 );
     $lockouts = ikss_get_lockouts();
-    $now      = current_time( 'mysql' );
+    $now      = ikss_now();
+    $kontakt  = get_option( 'ikss_security_txt_contact', '' );
+    $sslstat  = get_option( 'ikss_https_check', '' );
+    $ssltid   = get_option( 'ikss_https_check_time', '' );
+    $sslmeld  = get_option( 'ikss_https_check_message', '' );
+    $restlogg = ikss_get_rest_log( 50 );
     ?>
     <div class="wrap ikss-wrap">
         <h1 class="ikss-title">🔒 IK Site Security</h1>
@@ -96,7 +111,7 @@ function ikss_admin_page() {
 
             <!-- ══ DEL 1: SIKKERHET ══════════════════════════════ -->
             <div class="ikss-section">
-                <h2 class="ikss-section-title"><span class="ikss-icon">🛡️</span> Del 1 — Sikkerhet</h2>
+                <h2 class="ikss-section-title"><span class="ikss-icon">🛡️</span> Del 1: Sikkerhet</h2>
                 <table class="form-table ikss-table">
                     <?php ikss_checkbox( 'disable_xmlrpc', 'Deaktiver XML-RPC',
                         'Blokkerer xmlrpc.php på servernivå via .htaccess og deaktiverer WordPress-filteret. BlogVault bruker sin egen plugin og trenger ikke XML-RPC.' ); ?>
@@ -119,7 +134,7 @@ function ikss_admin_page() {
 
             <!-- ══ DEL 2: BRUTE FORCE ════════════════════════════ -->
             <div class="ikss-section">
-                <h2 class="ikss-section-title"><span class="ikss-icon">🔐</span> Del 2 — Brute Force-beskyttelse</h2>
+                <h2 class="ikss-section-title"><span class="ikss-icon">🔐</span> Del 2: Brute Force-beskyttelse</h2>
                 <table class="form-table ikss-table">
                     <?php ikss_checkbox( 'brute_force_enabled', 'Aktiver brute force-beskyttelse',
                         'Låser ute IP-adresser som overskrider maks antall innloggingsforsøk.' ); ?>
@@ -144,7 +159,7 @@ function ikss_admin_page() {
 
             <!-- ══ DEL 3: LOGIN ══════════════════════════════════ -->
             <div class="ikss-section">
-                <h2 class="ikss-section-title"><span class="ikss-icon">🔑</span> Del 3 — Custom Login</h2>
+                <h2 class="ikss-section-title"><span class="ikss-icon">🔑</span> Del 3: Custom Login</h2>
                 <table class="form-table ikss-table">
                     <?php ikss_checkbox( 'custom_login_enabled', 'Aktiver custom login-side',
                         'Skjuler wp-login.php og wp-admin. Login skjer på din valgte URL.' ); ?>
@@ -178,6 +193,43 @@ function ikss_admin_page() {
                 </div>
             </div>
 
+            <!-- ══ DEL 4: HTTPS, SECURITY.TXT, VARSLER (2.5.0) ═══════ -->
+            <div class="ikss-section">
+                <h2 class="ikss-section-title"><span class="ikss-icon">🔐</span> Del 4: HTTPS, security.txt og varsler</h2>
+                <table class="form-table ikss-table">
+                    <?php ikss_checkbox( 'force_https', 'Tving HTTPS',
+                        'Sender http-besøk til https (301) og setter Strict-Transport-Security. Slår seg bare på når pluginens egen SSL-selvsjekk lykkes og WordPress-adressen er https, så siden kan ikke låse seg selv ute.' ); ?>
+                    <tr>
+                        <th scope="row">SSL-selvsjekk</th>
+                        <td>
+                            <?php if ( $sslstat === 'ok' ) : ?>
+                                <span class="ikss-badge-ok">✅ OK</span>
+                            <?php elseif ( $sslstat === 'feil' ) : ?>
+                                <span class="ikss-badge-locked">❌ Feilet<?php echo $sslmeld ? ': ' . esc_html( $sslmeld ) : ''; ?></span>
+                            <?php else : ?>
+                                <span class="ikss-muted">Ikke kjørt ennå</span>
+                            <?php endif; ?>
+                            <p class="description">
+                                <?php echo $ssltid ? 'Sist sjekket ' . esc_html( ikss_time_local( $ssltid ) ) . '. ' : ''; ?>
+                                HTTPS-tvang er akkurat nå <strong><?php echo ikss_https_is_active() ? 'aktiv' : 'ikke aktiv'; ?></strong>. Sjekken kjøres i bakgrunnen hvert døgn, og med en gang når du lagrer.
+                            </p>
+                        </td>
+                    </tr>
+                    <?php ikss_checkbox( 'security_txt_enabled', 'security.txt',
+                        'Publiserer /.well-known/security.txt (RFC 9116), så sikkerhetsforskere vet hvor de skal melde fra. Utløpsdatoen fornyer seg selv.' ); ?>
+                    <tr>
+                        <th scope="row"><label for="ikss_security_txt_contact">Kontakt-e-post i security.txt</label></th>
+                        <td>
+                            <input type="email" id="ikss_security_txt_contact" name="ikss_security_txt_contact"
+                                value="<?php echo esc_attr( $kontakt ); ?>" class="regular-text" placeholder="<?php echo esc_attr( get_option( 'admin_email' ) ); ?>" />
+                            <p class="description">Tom = administrator-e-posten til siden (<?php echo esc_html( get_option( 'admin_email' ) ); ?>). Fila ligger på <a href="<?php echo esc_url( home_url( '/.well-known/security.txt' ) ); ?>" target="_blank" rel="noopener"><?php echo esc_html( home_url( '/.well-known/security.txt' ) ); ?></a>.</p>
+                        </td>
+                    </tr>
+                    <?php ikss_checkbox( 'login_alert_enabled', 'E-postvarsel ved innlogging fra ny IP',
+                        'Sender e-post til admin når noen logger inn fra en IP-adresse som ikke er sett før.' ); ?>
+                </table>
+            </div>
+
             <?php submit_button( 'Lagre innstillinger', 'primary ikss-save-btn' ); ?>
         </form>
 
@@ -206,12 +258,12 @@ function ikss_admin_page() {
                             <tr class="<?php echo $is_locked ? 'ikss-row-locked' : ''; ?>">
                                 <td><code><?php echo esc_html( $row->ip ); ?></code></td>
                                 <td><?php echo (int) $row->attempts; ?></td>
-                                <td><?php echo esc_html( $row->last_attempt ); ?></td>
+                                <td><?php echo esc_html( ikss_time_local( $row->last_attempt ) ); ?></td>
                                 <td>
                                     <?php if ( $is_locked ) : ?>
-                                        <span class="ikss-badge-locked">🔒 <?php echo esc_html( $row->locked_until ); ?></span>
+                                        <span class="ikss-badge-locked">🔒 <?php echo esc_html( ikss_time_local( $row->locked_until ) ); ?></span>
                                     <?php else : ?>
-                                        <span class="ikss-muted">—</span>
+                                        <span class="ikss-muted">ikke låst</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -237,10 +289,6 @@ function ikss_admin_page() {
         <!-- ══ INNLOGGINGSLOGG ══════════════════════════════════ -->
         <div class="ikss-section ikss-lockout-section">
             <h2 class="ikss-section-title"><span class="ikss-icon">📋</span> Innloggingslogg</h2>
-                <table class="form-table ikss-table">
-                    <?php ikss_checkbox( 'login_alert_enabled', 'E-postvarsel ved innlogging fra ny IP',
-                        'Sender e-post til admin når noen logger inn fra en IP-adresse som ikke er sett før.' ); ?>
-                </table>
             <?php
             global $wpdb;
             $logs = $wpdb->get_results(
@@ -271,6 +319,37 @@ function ikss_admin_page() {
                     </tbody>
                 </table>
                 <p class="ikss-muted" style="margin-top:.75rem;font-size:.8125rem;">Viser de 50 siste. Loggen beholder totalt 200 innlogginger.</p>
+            <?php endif; ?>
+        </div>
+
+        <!-- ══ REST-FEILLOGG (2.5.0) ═══════════════════════════ -->
+        <div class="ikss-section ikss-lockout-section">
+            <h2 class="ikss-section-title"><span class="ikss-icon">🛰️</span> Avviste REST-kall (401/403)</h2>
+            <p class="description">Alle REST-kall som ble avvist, uansett hvilken plugin som eier ruten. Mange rader mot samme rute fra samme IP kan bety at noen gjetter på en nøkkel.</p>
+            <?php if ( empty( $restlogg ) ) : ?>
+                <p class="ikss-muted">Ingen avviste REST-kall registrert.</p>
+            <?php else : ?>
+                <table class="widefat ikss-lockout-table">
+                    <thead>
+                        <tr>
+                            <th>Tidspunkt</th>
+                            <th>IP-adresse</th>
+                            <th>Rute</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ( $restlogg as $row ) : ?>
+                        <tr>
+                            <td><?php echo esc_html( ikss_time_local( $row->logged_at ) ); ?></td>
+                            <td><code><?php echo esc_html( $row->ip ); ?></code></td>
+                            <td><code><?php echo esc_html( $row->route ); ?></code></td>
+                            <td><?php echo (int) $row->status; ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <p class="ikss-muted" style="margin-top:.75rem;font-size:.8125rem;">Viser de 50 siste. Loggen beholder totalt 500 rader.</p>
             <?php endif; ?>
         </div>
 
